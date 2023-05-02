@@ -1,0 +1,5 @@
+config BR2_PACKAGE_LPS25HB_MODULE
+        bool "lps25hb"
+        depends on BR2_LINUX_KERNEL
+        help
+                Custom driver for LPS25HB barometer

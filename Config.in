@@ -1,0 +1,2 @@
+# Name set in external.desc
+source "$BR2_EXTERNAL_WEATHER_STATION_PATH/package/lps25hb/Config.in"
