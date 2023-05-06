@@ -1,7 +1,7 @@
-&i2c1 {
-    customlps25hb: customlps25hb@5D {
+&i2c2 {
+    customlps25hb: customlps25hb@5d {
         compatible = "ws2,customlps25hb";
-        reg = <0x5D>;
+        reg = <0x5d>;
         status = "okay";
     };
 };
