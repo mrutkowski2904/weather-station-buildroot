@@ -1,18 +1,7 @@
-#include <linux/module.h>
-#include <linux/kernel.h>
-#include <linux/sys.h>
-#include <linux/fs.h>
-#include <linux/cdev.h>
 #include <linux/i2c.h>
 
-#define LPS25HB_MAX_DEVICES 15
-
-struct driver_data
-{
-    struct class *sysfs_class;
-    dev_t device_num_base;
-    int number_of_devices;
-};
+#include "lps25hb.h"
+#include "io.h"
 
 static int device_probe(struct i2c_client *client, const struct i2c_device_id *id);
 static int device_remove(struct i2c_client *client);
@@ -40,11 +29,24 @@ struct i2c_driver lps25hb_platform_driver = {
     },
 };
 
-static struct driver_data global_driver_data;
+struct driver_data global_driver_data;
 
 static int device_probe(struct i2c_client *client, const struct i2c_device_id *id)
 {
-    dev_info(&client->dev, "probe called\n");
+    int status;
+    struct device_data *dev_data;
+
+    dev_info(&client->dev, "probe start\n");
+
+    /* check if this is our device and communication works */
+    status = lps25hb_check_communication(client);
+    if (status < 0)
+    {
+        dev_err(&client->dev, "error while reading data from the device\n");
+        return status;
+    }
+
+    dev_info(&client->dev, "probe successful, established communication with the device\n");
     return 0;
 }
 
