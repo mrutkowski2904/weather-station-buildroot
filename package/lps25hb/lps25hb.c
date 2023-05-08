@@ -6,6 +6,7 @@
 #include <linux/mutex.h>
 #include <linux/jiffies.h>
 #include <linux/i2c.h>
+#include <linux/wait.h>
 
 #include "lps25hb.h"
 #include "io.h"
@@ -14,6 +15,8 @@
 static int device_fd_open(struct inode *inode, struct file *file);
 static int device_fd_release(struct inode *inode, struct file *file);
 static ssize_t device_fd_read(struct file *file, char __user *buffer, size_t count, loff_t *f_pos);
+
+static void workqueue_read_callback(struct work_struct *work);
 
 static int device_probe(struct i2c_client *client, const struct i2c_device_id *id);
 static int device_remove(struct i2c_client *client);
@@ -52,17 +55,97 @@ struct driver_data driver_data;
 
 static int device_fd_open(struct inode *inode, struct file *file)
 {
+    struct device_data *dev_data;
+
+    /* /dev/barometerX is read only */
+    if (file->f_mode & FMODE_WRITE)
+        return -EPERM;
+
+    dev_data = container_of(inode->i_cdev, struct device_data, cdev);
+    file->private_data = dev_data;
+
     return 0;
 }
 
 static int device_fd_release(struct inode *inode, struct file *file)
 {
+    /* nothing to do */
     return 0;
 }
 
 static ssize_t device_fd_read(struct file *file, char __user *buffer, size_t count, loff_t *f_pos)
 {
-    return count;
+    struct device_data *dev_data;
+    char pressure_str[PRESSURE_STRING_BUFFER_SIZE];
+    int pressure_str_len;
+
+    dev_data = file->private_data;
+
+    /* hardware problem */
+    if (!dev_data->hw_operational)
+        return -EIO;
+
+    /* userspace program (cat) does second read
+     * because output string is shorter than requested amount
+     * there is no more data to read
+     */
+    if (*f_pos != 0)
+        return 0;
+
+    /* handle non blocking read */
+    if (file->f_flags & O_NONBLOCK)
+    {
+        /* if stored data is not old, return it, else schedule read */
+        return -EAGAIN;
+    }
+
+    /* check if data update is needed */
+    if (mutex_lock_interruptible(&dev_data->data_mutex))
+        return -ERESTARTSYS;
+    dev_data->fresh_data = !time_is_before_jiffies(dev_data->last_read_jiffies + msecs_to_jiffies(dev_data->last_read_valid_time_ms));
+    mutex_unlock(&dev_data->data_mutex);
+
+    if (!dev_data->fresh_data)
+    {
+        schedule_work(&dev_data->device_read_work);
+        if (wait_event_interruptible(dev_data->read_event, dev_data->fresh_data == true))
+            return -ERESTARTSYS;
+
+        /* error might have occured during scheduled read */
+        if (!dev_data->hw_operational)
+            return -EIO;
+    }
+
+    if (mutex_lock_interruptible(&dev_data->data_mutex))
+        return -ERESTARTSYS;
+    pressure_str_len = snprintf(pressure_str, PRESSURE_STRING_BUFFER_SIZE, "%d", dev_data->last_read_pressure);
+    mutex_unlock(&dev_data->data_mutex);
+
+    if (pressure_str_len > count)
+        pressure_str_len = count;
+
+    if (copy_to_user(buffer, pressure_str, pressure_str_len))
+        return -EFAULT;
+
+    *f_pos += pressure_str_len;
+    return pressure_str_len;
+}
+
+static void workqueue_read_callback(struct work_struct *work)
+{
+    int pressure;
+    struct device_data *dev_data;
+    dev_data = container_of(work, struct device_data, device_read_work);
+
+    mutex_lock(&dev_data->data_mutex);
+    pressure = lps25hb_read_pressure_hpa(dev_data->i2c_client);
+    if (pressure < 0)
+        dev_data->hw_operational = false;
+    dev_data->last_read_pressure = pressure;
+    dev_data->last_read_jiffies = jiffies;
+    dev_data->fresh_data = true;
+    mutex_unlock(&dev_data->data_mutex);
+    wake_up_interruptible_all(&dev_data->read_event);
 }
 
 static int device_probe(struct i2c_client *client, const struct i2c_device_id *id)
@@ -86,9 +169,14 @@ static int device_probe(struct i2c_client *client, const struct i2c_device_id *i
     }
     i2c_set_clientdata(client, dev_data);
 
-    mutex_init(&dev_data->read_mutex);
+    mutex_init(&dev_data->data_mutex);
     dev_data->i2c_client = client;
+    dev_data->fresh_data = false;
+    dev_data->hw_operational = false;
+    dev_data->last_read_valid_time_ms = LPS25HB_LAST_READ_VALID_TIME_MS;
     dev_data->cdev.owner = THIS_MODULE;
+    init_waitqueue_head(&dev_data->read_event);
+    INIT_WORK(&dev_data->device_read_work, workqueue_read_callback);
 
     /* create /dev/barometerX */
     mutex_lock(&driver_data.driver_data_mutex);
@@ -114,7 +202,15 @@ static int device_probe(struct i2c_client *client, const struct i2c_device_id *i
     driver_data.number_of_devices++;
     mutex_unlock(&driver_data.driver_data_mutex);
 
-    /* passed the communication test at the beginning and driver is registered */
+    status = lps25hb_configure_device(client);
+    if (status)
+    {
+        device_destroy(driver_data.sysfs_class, dev_data->dev_num);
+        dev_err(&client->dev, "LPS25HB error while configuring the device\n");
+        return status;
+    }
+    dev_data->hw_operational = true;
+
     dev_info(&client->dev, "LPS25HB probe successful, established communication with the device\n");
     return 0;
 }
