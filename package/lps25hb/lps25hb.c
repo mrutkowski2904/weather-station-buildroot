@@ -7,6 +7,7 @@
 #include <linux/jiffies.h>
 #include <linux/i2c.h>
 #include <linux/wait.h>
+#include <linux/poll.h>
 
 #include "lps25hb.h"
 #include "io.h"
@@ -15,6 +16,7 @@
 static int device_fd_open(struct inode *inode, struct file *file);
 static int device_fd_release(struct inode *inode, struct file *file);
 static ssize_t device_fd_read(struct file *file, char __user *buffer, size_t count, loff_t *f_pos);
+static unsigned int device_fd_poll(struct file *file, poll_table *wait);
 
 static void workqueue_read_callback(struct work_struct *work);
 
@@ -49,6 +51,7 @@ static struct file_operations file_ops = {
     .open = device_fd_open,
     .release = device_fd_release,
     .read = device_fd_read,
+    .poll = device_fd_poll,
 };
 
 struct driver_data driver_data;
@@ -92,11 +95,33 @@ static ssize_t device_fd_read(struct file *file, char __user *buffer, size_t cou
     if (*f_pos != 0)
         return 0;
 
-    /* handle non blocking read */
+    /* this is non blocking read */
     if (file->f_flags & O_NONBLOCK)
     {
-        /* if stored data is not old, return it, else schedule read */
-        return -EAGAIN;
+        if (!mutex_trylock(&dev_data->data_mutex))
+            return -EAGAIN;
+
+        if (time_is_before_jiffies(dev_data->last_read_jiffies + msecs_to_jiffies(dev_data->last_read_valid_time_ms)))
+        {
+            /* old data */
+            dev_data->fresh_data = false;
+            mutex_unlock(&dev_data->data_mutex);
+            schedule_work(&dev_data->device_read_work);
+            return -EAGAIN;
+        }
+
+        /* data is fresh enough */
+        pressure_str_len = snprintf(pressure_str, PRESSURE_STRING_BUFFER_SIZE, "%d", dev_data->last_read_pressure);
+        mutex_unlock(&dev_data->data_mutex);
+
+        if (pressure_str_len > count)
+            pressure_str_len = count;
+
+        if (copy_to_user(buffer, pressure_str, pressure_str_len))
+            return -EFAULT;
+
+        *f_pos += pressure_str_len;
+        return pressure_str_len;
     }
 
     /* check if data update is needed */
@@ -129,6 +154,26 @@ static ssize_t device_fd_read(struct file *file, char __user *buffer, size_t cou
 
     *f_pos += pressure_str_len;
     return pressure_str_len;
+}
+
+static unsigned int device_fd_poll(struct file *file, poll_table *wait)
+{
+    struct device_data *dev_data;
+    unsigned int poll_status;
+
+    dev_data = file->private_data;
+    poll_status = 0;
+
+    poll_wait(file, &dev_data->read_event, wait);
+
+    if (mutex_trylock(&dev_data->data_mutex))
+    {
+        if (!time_is_before_jiffies(dev_data->last_read_jiffies + msecs_to_jiffies(dev_data->last_read_valid_time_ms)))
+            poll_status |= (POLLIN | POLLRDNORM);
+        mutex_unlock(&dev_data->data_mutex);
+    }
+
+    return poll_status;
 }
 
 static void workqueue_read_callback(struct work_struct *work)
@@ -186,7 +231,7 @@ static int device_probe(struct i2c_client *client, const struct i2c_device_id *i
     if (status < 0)
     {
         mutex_unlock(&driver_data.driver_data_mutex);
-        dev_err(&client->dev, "LPS25HB cdev add failed\n");
+        dev_err(&client->dev, "lps25hb cdev add failed\n");
         return status;
     }
 
@@ -196,7 +241,7 @@ static int device_probe(struct i2c_client *client, const struct i2c_device_id *i
     {
         mutex_unlock(&driver_data.driver_data_mutex);
         status = PTR_ERR(dev_data->device);
-        dev_err(&client->dev, "LPS25HB error while creating device\n");
+        dev_err(&client->dev, "lps25hb error while creating device\n");
         return status;
     }
     driver_data.number_of_devices++;
@@ -206,12 +251,12 @@ static int device_probe(struct i2c_client *client, const struct i2c_device_id *i
     if (status)
     {
         device_destroy(driver_data.sysfs_class, dev_data->dev_num);
-        dev_err(&client->dev, "LPS25HB error while configuring the device\n");
+        dev_err(&client->dev, "lps25hb error while configuring the device\n");
         return status;
     }
     dev_data->hw_operational = true;
 
-    dev_info(&client->dev, "LPS25HB probe successful, established communication with the device\n");
+    dev_info(&client->dev, "lps25hb probe successful, established communication with the device\n");
     return 0;
 }
 
@@ -220,7 +265,7 @@ static int device_remove(struct i2c_client *client)
     struct device_data *dev_data;
     dev_data = i2c_get_clientdata(client);
     device_destroy(driver_data.sysfs_class, dev_data->dev_num);
-    dev_info(&client->dev, "LPS25HB removed\n");
+    dev_info(&client->dev, "lps25hb removed\n");
     return 0;
 }
 
