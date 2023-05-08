@@ -8,6 +8,7 @@
 #include <linux/i2c.h>
 #include <linux/wait.h>
 #include <linux/poll.h>
+#include <linux/sysfs.h>
 
 #include "lps25hb.h"
 #include "io.h"
@@ -17,6 +18,10 @@ static int device_fd_open(struct inode *inode, struct file *file);
 static int device_fd_release(struct inode *inode, struct file *file);
 static ssize_t device_fd_read(struct file *file, char __user *buffer, size_t count, loff_t *f_pos);
 static unsigned int device_fd_poll(struct file *file, poll_table *wait);
+
+/* sysfs attribute io */
+static ssize_t data_stale_time_ms_show(struct device *dev, struct device_attribute *attr, char *buf);
+static ssize_t data_stale_time_ms_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count);
 
 static void workqueue_read_callback(struct work_struct *work);
 
@@ -52,6 +57,20 @@ static struct file_operations file_ops = {
     .release = device_fd_release,
     .read = device_fd_read,
     .poll = device_fd_poll,
+};
+
+/* dev_attr_data_stale_time_ms */
+static DEVICE_ATTR(data_stale_time_ms, S_IRUGO | S_IWUSR,
+                   data_stale_time_ms_show,
+                   data_stale_time_ms_store);
+
+struct attribute *lps25hb_sysfs_attrs[] = {
+    &dev_attr_data_stale_time_ms.attr,
+    NULL,
+};
+
+const struct attribute_group lps25hb_sysfs_attrs_group = {
+    .attrs = lps25hb_sysfs_attrs,
 };
 
 struct driver_data driver_data;
@@ -176,6 +195,42 @@ static unsigned int device_fd_poll(struct file *file, poll_table *wait)
     return poll_status;
 }
 
+static ssize_t data_stale_time_ms_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+    int count;
+    struct device_data *dev_data;
+    dev_data = dev_get_drvdata(dev->parent);
+
+    if (mutex_lock_interruptible(&dev_data->data_mutex))
+        return -ERESTARTSYS;
+    count = sprintf(buf, "%d\n", dev_data->last_read_valid_time_ms);
+    mutex_unlock(&dev_data->data_mutex);
+
+    return count;
+}
+
+static ssize_t data_stale_time_ms_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+    int status;
+    struct device_data *dev_data;
+    u32 new_stale_time_ms;
+    dev_data = dev_get_drvdata(dev->parent);
+
+    status = kstrtou32(buf, 0, &new_stale_time_ms);
+    if (status)
+        return status;
+
+    if (new_stale_time_ms < LPS25HB_LAST_READ_VALID_TIME_MIN_MS)
+        return -EINVAL;
+
+    if (mutex_lock_interruptible(&dev_data->data_mutex))
+        return -ERESTARTSYS;
+    dev_data->last_read_valid_time_ms = new_stale_time_ms;
+    mutex_unlock(&dev_data->data_mutex);
+
+    return count;
+}
+
 static void workqueue_read_callback(struct work_struct *work)
 {
     int pressure;
@@ -247,9 +302,19 @@ static int device_probe(struct i2c_client *client, const struct i2c_device_id *i
     driver_data.number_of_devices++;
     mutex_unlock(&driver_data.driver_data_mutex);
 
+    /* add sysfs attributes to the device */
+    status = sysfs_create_group(&dev_data->device->kobj, &lps25hb_sysfs_attrs_group);
+    if (status)
+    {
+        dev_err(&client->dev, "error while creating device sysfs attributes\n");
+        device_destroy(driver_data.sysfs_class, dev_data->dev_num);
+        return status;
+    }
+
     status = lps25hb_configure_device(client);
     if (status)
     {
+        sysfs_remove_group(&dev_data->device->kobj, &lps25hb_sysfs_attrs_group);
         device_destroy(driver_data.sysfs_class, dev_data->dev_num);
         dev_err(&client->dev, "lps25hb error while configuring the device\n");
         return status;
@@ -264,6 +329,7 @@ static int device_remove(struct i2c_client *client)
 {
     struct device_data *dev_data;
     dev_data = i2c_get_clientdata(client);
+    sysfs_remove_group(&dev_data->device->kobj, &lps25hb_sysfs_attrs_group);
     device_destroy(driver_data.sysfs_class, dev_data->dev_num);
     dev_info(&client->dev, "lps25hb removed\n");
     return 0;
