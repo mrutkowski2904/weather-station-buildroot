@@ -1,0 +1,5 @@
+config BR2_PACKAGE_WEB_SERVER
+        bool "web_server"
+        depends on BR2_INSTALL_LIBSTDCPP
+        help
+                Custom web server implementation
