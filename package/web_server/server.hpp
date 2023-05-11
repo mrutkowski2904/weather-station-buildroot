@@ -14,8 +14,18 @@ namespace server
     Socket(const std::uint16_t port);
     void Listen(std::function<void(int)> on_connection);
     void Close();
+
   private:
-    int server_socket;
+    int socket_fd;
     bool stop = false;
+  };
+
+  struct HttpServer
+  {
+    HttpServer(server::Socket &&socket);
+
+  private:
+    bool IsValidHttpRequest();
+    Socket socket;
   };
 }

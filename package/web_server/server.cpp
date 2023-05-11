@@ -17,8 +17,8 @@ server::Socket::Socket(const std::uint16_t port)
 {
   assert(port != 0);
 
-  this->server_socket = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
-  if (this->server_socket <= 0)
+  this->socket_fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
+  if (this->socket_fd <= 0)
   {
     std::cerr << "socket creation: " << std::endl;
     exit(errno);
@@ -28,7 +28,7 @@ server::Socket::Socket(const std::uint16_t port)
   server_addr.sin_port = htons(port);
   server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
-  bind(this->server_socket, (struct sockaddr *)&server_addr, sizeof(server_addr));
+  bind(this->socket_fd, (struct sockaddr *)&server_addr, sizeof(server_addr));
 }
 
 void server::Socket::Listen(std::function<void(int)> on_connection)
@@ -41,11 +41,11 @@ void server::Socket::Listen(std::function<void(int)> on_connection)
 
   epoll_fd = epoll_create(1);
   event.events = EPOLLIN;
-  event.data.fd = this->server_socket;
-  epoll_ctl(epoll_fd, EPOLL_CTL_ADD, this->server_socket, &event);
+  event.data.fd = this->socket_fd;
+  epoll_ctl(epoll_fd, EPOLL_CTL_ADD, this->socket_fd, &event);
   struct epoll_event epoll_events[max_epoll_events];
 
-  if (listen(this->server_socket, server::max_connections))
+  if (listen(this->socket_fd, server::max_connections))
   {
     std::cerr << "socket listen: " << std::endl;
     exit(errno);
@@ -65,7 +65,7 @@ void server::Socket::Listen(std::function<void(int)> on_connection)
     {
       if (epoll_events[i].events & EPOLLIN)
       {
-        client_socket = accept4(this->server_socket, &remote_addr, &remote_addr_len, SOCK_NONBLOCK);
+        client_socket = accept4(this->socket_fd, &remote_addr, &remote_addr_len, SOCK_NONBLOCK);
         if (client_socket != -1)
         {
           inet_ntop(AF_INET, remote_addr.sa_data, remote_addr_str, remote_addr_len);
@@ -76,10 +76,14 @@ void server::Socket::Listen(std::function<void(int)> on_connection)
     }
   }
   close(epoll_fd);
-  close(server_socket);
+  close(socket_fd);
 }
 
 void server::Socket::Close()
 {
   this->stop = true;
+}
+
+server::HttpServer::HttpServer(server::Socket &&server_socket) : socket(server_socket)
+{
 }
