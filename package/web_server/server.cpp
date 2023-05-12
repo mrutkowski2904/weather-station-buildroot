@@ -1,4 +1,6 @@
 #include <iostream>
+#include <thread>
+#include <mutex>
 #include <cassert>
 #include <cstdlib>
 #include <cerrno>
@@ -65,7 +67,7 @@ void server::Socket::Listen(std::function<void(int)> on_connection)
     {
       if (epoll_events[i].events & EPOLLIN)
       {
-        client_socket = accept4(this->socket_fd, &remote_addr, &remote_addr_len, SOCK_NONBLOCK);
+        client_socket = accept(this->socket_fd, &remote_addr, &remote_addr_len);
         if (client_socket != -1)
         {
           inet_ntop(AF_INET, remote_addr.sa_data, remote_addr_str, remote_addr_len);
@@ -84,6 +86,123 @@ void server::Socket::Close()
   this->stop = true;
 }
 
+// ==============================
+//   HTTP SERVER IMPLEMENTATION
+// ==============================
+
 server::HttpServer::HttpServer(server::Socket &&server_socket) : socket(server_socket)
 {
+}
+
+void server::HttpServer::Run()
+{
+  std::function<void(int)> connection_handler = std::bind(
+      &HttpServer::HandleConnection,
+      this,
+      std::placeholders::_1);
+
+  this->socket.Listen(connection_handler);
+}
+
+void server::HttpServer::RegisterHandler(std::string path, std::function<std::string()> handler)
+{
+  this->path_handlers_mutex.lock();
+  this->path_handlers[path] = handler;
+  this->path_handlers_mutex.unlock();
+}
+
+void server::HttpServer::HandleConnection(int remote_socket)
+{
+  this->threads_mutex.lock();
+  std::function<void(int)> conn_thread = std::bind(&HttpServer::ConnectionThread, this, std::placeholders::_1);
+  this->threads.push_back(std::thread(conn_thread, remote_socket));
+  this->threads_mutex.unlock();
+}
+
+void server::HttpServer::ConnectionThread(int remote_socket)
+{
+  // receive data
+  std::string request_data;
+  char request_buffer[request_buffer_size];
+  memset(request_buffer, 0, request_buffer_size);
+  ssize_t request_size = recv(remote_socket, request_buffer, request_buffer_size, 0);
+  if (request_size == -1)
+  {
+    ConenctionThreadExit(remote_socket);
+    return;
+  }
+  request_data.assign(request_buffer);
+
+  // get requested path
+  std::pair<bool, std::string> path = GetRequestPath(request_data);
+  if (!path.first)
+  {
+    // invalid HTTP header
+    ConenctionThreadExit(remote_socket);
+    return;
+  }
+
+  // find handler or return 404
+  this->path_handlers_mutex.lock();
+  auto handler = this->path_handlers.find(path.second);
+  this->path_handlers_mutex.unlock();
+
+  // call user handler
+  if (handler != this->path_handlers.end())
+  {
+    std::string user_response = handler->second();
+
+    // add http header
+    std::string header = CreateHttpHeader();
+    user_response = header + user_response;
+
+    // send response
+    send(remote_socket, user_response.c_str(), user_response.length(), 0);
+  }
+  else
+  {
+    // no handler
+    // TODO: implement not found handler
+  }
+
+  ConenctionThreadExit(remote_socket);
+}
+
+void server::HttpServer::ConenctionThreadExit(int remote_socket)
+{
+  // close remote socket (connection)
+  close(remote_socket);
+
+  // remove this thread from threads
+  std::thread::id this_id = std::this_thread::get_id();
+  this->threads_mutex.lock();
+  auto threads_iter = std::find_if(this->threads.begin(), this->threads.end(), [=](std::thread &current_thread)
+                                   { return current_thread.get_id() == this_id; });
+
+  if (threads_iter != this->threads.end())
+  {
+    threads_iter->detach();
+    this->threads.erase(threads_iter);
+  }
+  this->threads_mutex.unlock();
+}
+
+std::string server::HttpServer::CreateHttpHeader()
+{
+  return "HTTP/1.1 200 OK\r\n\n";
+}
+
+std::pair<bool, std::string> server::HttpServer::GetRequestPath(std::string &request_data)
+{
+  std::size_t whitespace_no1 = request_data.find(' ');
+  if (whitespace_no1 == std::string::npos)
+    return std::make_pair(false, "");
+  request_data = request_data.substr(whitespace_no1 + 1, request_data.length());
+
+  std::size_t whitespace_no2 = request_data.find(' ');
+  if (whitespace_no2 == std::string::npos)
+    return std::make_pair(false, "");
+
+  request_data = request_data.substr(0, whitespace_no2);
+  return std::make_pair(true, request_data);
 }
