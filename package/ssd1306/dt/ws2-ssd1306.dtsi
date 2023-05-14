@@ -1,7 +1,7 @@
 &i2c2 {
-    customssd1306: customssd1306@78 {
+    customssd1306: customssd1306@3c {
         compatible = "ws2,customssd1306";
-        reg = <0x78>;
+        reg = <0x3c>;
         status = "okay";
     };
 };
