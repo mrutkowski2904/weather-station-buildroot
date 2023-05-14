@@ -1,0 +1,5 @@
+config BR2_PACKAGE_SSD1306_MODULE
+        bool "ssd1306"
+        depends on BR2_LINUX_KERNEL
+        help
+                Custom framebuffer driver for SSD1306 display
