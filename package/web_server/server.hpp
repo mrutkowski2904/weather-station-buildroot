@@ -14,6 +14,12 @@ namespace server
   constexpr int epoll_timeout_ms = 40;
   constexpr size_t request_buffer_size = 1024;
 
+  enum struct ResponseCode
+  {
+    ok,
+    not_found
+  };
+
   struct Socket
   {
     Socket(const std::uint16_t port);
@@ -44,7 +50,7 @@ namespace server
     void HandleConnection(int remote_socket);
     void ConnectionThread(int remote_socket);
     void ConenctionThreadExit(int remote_socket);
-    static std::string CreateHttpHeader();
+    static std::string CreateHttpHeader(server::ResponseCode code);
     static std::pair<bool, std::string> GetRequestPath(std::string &request_data);
   };
 }

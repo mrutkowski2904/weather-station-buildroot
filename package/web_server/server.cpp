@@ -153,7 +153,7 @@ void server::HttpServer::ConnectionThread(int remote_socket)
     std::string user_response = handler->second();
 
     // add http header
-    std::string header = CreateHttpHeader();
+    std::string header = CreateHttpHeader(ResponseCode::ok);
     user_response = header + user_response;
 
     // send response
@@ -162,7 +162,8 @@ void server::HttpServer::ConnectionThread(int remote_socket)
   else
   {
     // no handler
-    // TODO: implement not found handler
+    std::string header = CreateHttpHeader(ResponseCode::not_found);
+    send(remote_socket, header.c_str(), header.length(), 0);
   }
 
   ConenctionThreadExit(remote_socket);
@@ -187,9 +188,19 @@ void server::HttpServer::ConenctionThreadExit(int remote_socket)
   this->threads_mutex.unlock();
 }
 
-std::string server::HttpServer::CreateHttpHeader()
+std::string server::HttpServer::CreateHttpHeader(server::ResponseCode code)
 {
-  return "HTTP/1.1 200 OK\r\n\n";
+  switch (code)
+  {
+  case server::ResponseCode::ok:
+    return "HTTP/1.1 200 OK\r\n\n";
+    break;
+
+  case server::ResponseCode::not_found:
+  default:
+    return "HTTP/1.1 404 Not Found\r\n\n";
+    break;
+  }
 }
 
 std::pair<bool, std::string> server::HttpServer::GetRequestPath(std::string &request_data)
