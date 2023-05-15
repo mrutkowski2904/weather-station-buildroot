@@ -94,6 +94,33 @@ void ssd1306_set_pixel(u8 *display_buffer, u8 x, u8 y, u8 value)
     ssd1306_modify_at(display_buffer, x, y / 8, data);
 }
 
+void ssd1306_map_fb_to_display_buffer(u8 *display_buffer, u8 *fb)
+{
+    int index_x, index_y, display_x, display_y;
+    index_x = 0;
+    index_y = 0;
+
+    for (int i = 0; i < SSD1306_DISPLAY_BUFFER_SIZE; i++)
+    {
+        for (int local_x = 0; local_x < 8; local_x++)
+        {
+            u8 pixel_value = (fb[(index_y * SSD1306_LINE_LENGTH) + index_x] >> local_x) & 0x01;
+            display_x = (index_x * 8) + local_x;
+            display_y = index_y;
+            ssd1306_set_pixel(display_buffer, display_x, display_y, pixel_value);
+        }
+        if (index_x == SSD1306_LINE_LENGTH)
+        {
+            index_x = 0;
+            index_y++;
+        }
+        else
+        {
+            index_x++;
+        }
+    }
+}
+
 static void ssd1306_modify_at(u8 *display_buffer, u8 column, u8 page, u8 value)
 {
     page = (SSD1306_PAGES - 1) - page;

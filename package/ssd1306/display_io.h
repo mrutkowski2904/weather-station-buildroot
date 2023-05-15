@@ -6,9 +6,13 @@
 #define SSD1306_COLUMNS 128
 #define SSD1306_PAGES 8
 #define SSD1306_DISPLAY_BUFFER_SIZE (SSD1306_PAGES * SSD1306_COLUMNS)
+#define SSD1306_LINE_LENGTH (SSD1306_WIDTH / 8)
 
-#define SSD1306_MAX_X 127
-#define SSD1306_MAX_Y 63
+#define SSD1306_WIDTH SSD1306_COLUMNS
+#define SSD1306_HEIGHT (SSD1306_PAGES * 8)
+
+#define SSD1306_MAX_X (SSD1306_COLUMNS - 1)
+#define SSD1306_MAX_Y (SSD1306_HEIGHT - 1)
 
 /* memory map / command list */
 /* display off */
@@ -58,5 +62,6 @@ int ssd1306_configure_hardware(struct i2c_client *i2c_client);
 int ssd1306_write_command(struct i2c_client *i2c_client, u8 *buff, u16 len);
 int ssd1306_write_data(struct i2c_client *i2c_client, u8 *buff, u16 len);
 void ssd1306_set_pixel(u8 *display_buffer, u8 x, u8 y, u8 value);
+void ssd1306_map_fb_to_display_buffer(u8 *display_buffer, u8 *fb);
 
 #endif /* _DISPLAY_IO_H */
