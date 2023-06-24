@@ -1,0 +1,13 @@
+&i2c2 {
+    custmcp23008: custmcp23008@20 {
+        compatible = "mr,custmcp23008";
+        reg = <0x20>;
+        status = "okay";
+		gpio-controller;
+		#gpio-cells = <2>;
+		interrupt-controller;
+ 		#interrupt-cells = <2>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <16 0x8>; /* active low */
+    };
+};

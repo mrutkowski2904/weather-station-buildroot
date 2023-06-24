@@ -1,0 +1,5 @@
+config BR2_PACKAGE_MCP23008_MODULE
+        bool "mcp23008"
+        depends on BR2_LINUX_KERNEL
+        help
+                Custom driver for MCP23008 GPIO expander
