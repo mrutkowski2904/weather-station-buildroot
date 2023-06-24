@@ -169,7 +169,7 @@ void display_draw(struct display_handle *handle)
 
 void display_clear_buffer(struct display_handle *handle)
 {
-    memset(handle->fb_buff, 0xff, handle->fb_buff_size);
+    memset(handle->fb_buff, 0x00, handle->fb_buff_size);
 }
 
 static void display_swap(char *a, char *b)
