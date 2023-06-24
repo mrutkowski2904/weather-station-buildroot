@@ -134,9 +134,9 @@ void display_draw_char(struct display_handle *handle, int16_t start_x, int16_t s
     bitmap = font8x8_basic[(int)c];
     current_x = start_x;
 
-    for (x = 0; x < 8; x++)
+    for (x = 0; x < CHARACTER_DIMENSION; x++)
     {
-        for (y = 0; y < 8; y++)
+        for (y = 0; y < CHARACTER_DIMENSION; y++)
         {
             set = bitmap[x] & 1 << y;
             display_set_pixel(handle, current_x, start_y, set ? 1 : 0);

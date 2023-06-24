@@ -6,6 +6,7 @@
 
 #define DISPLAY_WIDTH 128
 #define DISPLAY_HEIGHT 64
+#define CHARACTER_DIMENSION 8
 
 struct display_handle
 {
