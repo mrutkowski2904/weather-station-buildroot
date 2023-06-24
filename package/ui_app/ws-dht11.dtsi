@@ -1,0 +1,7 @@
+/ {
+    dht11: dht11@0 {
+        compatible = "dht11";
+        gpios = <&gpio1 28 0>;
+        status = "okay";
+    };
+};
