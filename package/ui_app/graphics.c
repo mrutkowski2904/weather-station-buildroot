@@ -164,6 +164,7 @@ void display_draw_string(struct display_handle *handle, int16_t x, int16_t y, ch
 
 void display_draw(struct display_handle *handle)
 {
+    lseek(handle->fb_fd, 0, SEEK_SET);
     write(handle->fb_fd, handle->fb_buff, handle->fb_buff_size);
 }
 
