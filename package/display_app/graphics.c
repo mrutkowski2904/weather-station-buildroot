@@ -10,6 +10,7 @@
 #include <sys/ioctl.h>
 
 #include "graphics.h"
+#include "font.h"
 
 static void display_swap(char *a, char *b);
 
@@ -117,6 +118,47 @@ void display_draw_line(struct display_handle *handle, int16_t start_x, int16_t s
         y = (a * start_x) + b;
         display_set_pixel(handle, start_x, y, value);
         start_x++;
+    }
+}
+
+void display_draw_char(struct display_handle *handle, int16_t start_x, int16_t start_y, char c)
+{
+    int x, y;
+    int set;
+    char *bitmap;
+    int16_t current_x;
+
+    if (c > 127)
+        return;
+
+    bitmap = font8x8_basic[(int)c];
+    current_x = start_x;
+
+    for (x = 0; x < 8; x++)
+    {
+        for (y = 0; y < 8; y++)
+        {
+            set = bitmap[x] & 1 << y;
+            display_set_pixel(handle, current_x, start_y, set ? 1 : 0);
+            current_x++;
+        }
+        current_x = start_x;
+        start_y++;
+    }
+}
+
+void display_draw_string(struct display_handle *handle, int16_t x, int16_t y, char *str)
+{
+    int index = 0;
+
+    if (str == NULL)
+        return;
+
+    while (str[index] != '\0')
+    {
+        display_draw_char(handle, x, y, str[index]);
+        index++;
+        x += 8;
     }
 }
 

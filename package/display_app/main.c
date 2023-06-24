@@ -12,10 +12,13 @@ int main(void)
 
     // display_set_pixel(&handle, DISPLAY_WIDTH / 2, 0, 1);
     // display_set_pixel(&handle, DISPLAY_WIDTH / 2, DISPLAY_HEIGHT / 2, 1);
-    display_draw_line(&handle, 0, 0, DISPLAY_WIDTH / 2, DISPLAY_HEIGHT / 2, 1);
+    // display_draw_line(&handle, 0, 0, DISPLAY_WIDTH / 2, DISPLAY_HEIGHT / 2, 1);
 
-    display_draw_line(&handle, 0, 0, 0, DISPLAY_HEIGHT, 1);
-    display_draw_line(&handle, DISPLAY_WIDTH - 1, 0, DISPLAY_WIDTH - 1, DISPLAY_HEIGHT, 1);
+    // display_draw_line(&handle, 0, 0, 0, DISPLAY_HEIGHT, 1);
+    // display_draw_line(&handle, DISPLAY_WIDTH - 1, 0, DISPLAY_WIDTH - 1, DISPLAY_HEIGHT, 1);
+
+    // display_draw_char(&handle, DISPLAY_WIDTH / 2, DISPLAY_HEIGHT / 2, 'A');
+    display_draw_string(&handle, DISPLAY_WIDTH / 2, DISPLAY_HEIGHT / 2, "hello");
 
     display_draw(&handle);
 
