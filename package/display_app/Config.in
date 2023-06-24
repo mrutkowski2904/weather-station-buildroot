@@ -1,0 +1,4 @@
+config BR2_PACKAGE_DISPLAY_APP
+        bool "display_app"
+        help
+                Application that manages weather station's display

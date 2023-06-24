@@ -1,0 +1,31 @@
+#!/bin/sh
+#
+# Disable console on framebuffer display
+#
+
+start() {
+	echo "disabling console on fbdev"
+	echo 0 > /sys/class/vtconsole/vtcon1/bind
+	cat /dev/zero > /dev/fb0
+}
+
+stop() {
+	echo "enabling console on fbdev"
+	echo 1 > /sys/class/vtconsole/vtcon1/bind
+}
+
+restart() {
+	stop
+	start
+}
+
+case "$1" in
+  start|stop|restart)
+	"$1"
+	;;
+  *)
+	echo "Usage: $0 {start|stop|restart}"
+	exit 1
+esac
+
+exit $?
