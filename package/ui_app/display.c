@@ -6,6 +6,7 @@
 #include "display.h"
 #include "graphics.h"
 #include "sensors.h"
+#include "main.h"
 
 #define DISPLAY_X_PADDING 5
 #define DISPLAY_END_OFFSET 5
@@ -21,15 +22,13 @@ static void draw_interface(struct display_handle *display, struct sensors_handle
 
 void *display_thread_entry(void *data)
 {
-    int status = 0;
     struct display_handle display;
     struct sensors_handle *sensors = data;
 
-    status = display_init(&display, "/dev/fb0");
-    if (status)
-        return (void *)status;
+    if (display_init(&display, "/dev/fb0"))
+        return;
 
-    while (1)
+    while (keep_running)
     {
         display_clear_buffer(&display);
 
@@ -40,7 +39,6 @@ void *display_thread_entry(void *data)
     }
 
     display_deinit(&display);
-    return (void *)status;
 }
 
 static void draw_interface(struct display_handle *display, struct sensors_handle *sensors)

@@ -7,6 +7,7 @@
 #include <pthread.h>
 
 #include "sensors.h"
+#include "main.h"
 
 #define RAW_DATA_BUFFER_SIZE 10
 
@@ -28,7 +29,7 @@ void *sensors_thread_entry(void *data)
     current_humidity = 0;
     current_pressure = 0;
 
-    while (1)
+    while (keep_running)
     {
         dht11_read_temperature(&current_temperature);
         dht11_read_humidity(&current_humidity);
